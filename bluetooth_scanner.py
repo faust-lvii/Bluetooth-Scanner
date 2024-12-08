@@ -18,6 +18,16 @@ class BluetoothScannerApp:
         self.main_frame = ctk.CTkFrame(self.window)
         self.main_frame.pack(padx=20, pady=20, fill="both", expand=True)
         
+        # Progress bar frame
+        self.progress_frame = ctk.CTkFrame(self.main_frame)
+        self.progress_frame.pack(pady=10, fill="x", padx=20)
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(self.progress_frame)
+        self.progress_bar.pack(pady=5, fill="x")
+        self.progress_bar.set(0)
+        self.progress_bar.configure(mode="indeterminate")
+        
         # Başlık
         self.title_label = ctk.CTkLabel(
             self.main_frame,
@@ -60,6 +70,9 @@ class BluetoothScannerApp:
         self.status_label.configure(text="Taranıyor...")
         self.scan_button.configure(state="disabled")
         
+        # Progress bar'ı başlat
+        self.progress_bar.start()
+        
         try:
             devices = await BleakScanner.discover(timeout=5)
             
@@ -90,7 +103,11 @@ Aygıt Tipi: {device.details.get('props', {}).get('AddressType', 'Bilinmiyor')}
             
         except Exception as e:
             self.results_text.insert("end", f"Hata oluştu: {str(e)}\n")
-        
+        finally:
+            # Progress bar'ı durdur
+            self.progress_bar.stop()
+            self.progress_bar.set(0)
+            
         self.status_label.configure(text="Tarama tamamlandı")
         self.scan_button.configure(state="normal")
     
