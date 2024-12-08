@@ -42,9 +42,13 @@ class BluetoothScannerApp:
         self.button_frame = ctk.CTkFrame(self.main_frame)
         self.button_frame.pack(pady=10, fill="x", padx=20)
         
+        # Butonlar için iç frame (ortalama için)
+        self.inner_button_frame = ctk.CTkFrame(self.button_frame, fg_color="transparent")
+        self.inner_button_frame.pack(expand=True)
+        
         # Tarama butonu
         self.scan_button = ctk.CTkButton(
-            self.button_frame,
+            self.inner_button_frame,
             text="Taramayı Başlat",
             command=self.start_scan,
             font=("Helvetica", 14),
@@ -55,7 +59,7 @@ class BluetoothScannerApp:
         
         # Kaydetme butonu
         self.save_button = ctk.CTkButton(
-            self.button_frame,
+            self.inner_button_frame,
             text="Sonuçları Kaydet",
             command=self.save_results,
             font=("Helvetica", 14),
