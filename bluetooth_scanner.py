@@ -66,54 +66,70 @@ class BluetoothScannerApp:
         self.scanning = False
     
     async def scan_devices(self):
-        self.results_text.delete("1.0", "end")
-        self.status_label.configure(text="Taranıyor...")
-        self.scan_button.configure(state="disabled")
-        
-        # Progress bar'ı başlat
-        self.progress_bar.start()
+        # Ana thread'de UI güncellemelerini yap
+        self.window.after(0, lambda: self.results_text.delete("1.0", "end"))
+        self.window.after(0, lambda: self.status_label.configure(text="Taranıyor..."))
+        self.window.after(0, lambda: self.scan_button.configure(state="disabled"))
+        self.window.after(0, lambda: self.progress_bar.start())
         
         try:
             devices = await BleakScanner.discover(timeout=5)
             
-            if not devices:
-                self.results_text.insert("end", "Hiçbir Bluetooth cihazı bulunamadı.\n")
-            else:
-                for i, device in enumerate(devices, 1):
-                    device_info = f"""
+            def update_ui():
+                if not devices:
+                    self.results_text.insert("end", "Hiçbir Bluetooth cihazı bulunamadı.\n")
+                else:
+                    for i, device in enumerate(devices, 1):
+                        # Advertisement data'yı güvenli bir şekilde al
+                        adv_data = device.advertisement_data if hasattr(device, 'advertisement_data') else None
+                        rssi = adv_data.rssi if adv_data else "Bilinmiyor"
+                        
+                        device_info = f"""
 {'='*50}
 Cihaz {i}:
 İsim: {device.name or 'Bilinmiyor'}
 Adres: {device.address}
-RSSI: {device.rssi} dBm
-Aygıt Tipi: {device.details.get('props', {}).get('AddressType', 'Bilinmiyor')}
+RSSI: {rssi} dBm
 """
-                    if device.metadata:
-                        device_info += f"Metadata: {device.metadata}\n"
-                    
-                    if hasattr(device, 'advertisement_data'):
-                        adv_data = device.advertisement_data
+                        # Detaylı advertisement verilerini ekle
                         if adv_data:
                             device_info += "\nReklam Verileri:\n"
-                            for key, value in adv_data.__dict__.items():
-                                if value:
-                                    device_info += f"{key}: {value}\n"
-                    
-                    self.results_text.insert("end", device_info)
+                            if adv_data.local_name:
+                                device_info += f"Yerel İsim: {adv_data.local_name}\n"
+                            if adv_data.manufacturer_data:
+                                device_info += f"Üretici Verileri: {adv_data.manufacturer_data}\n"
+                            if adv_data.service_data:
+                                device_info += f"Servis Verileri: {adv_data.service_data}\n"
+                            if adv_data.service_uuids:
+                                device_info += f"Servis UUIDleri: {adv_data.service_uuids}\n"
+                            if adv_data.tx_power:
+                                device_info += f"TX Gücü: {adv_data.tx_power} dBm\n"
+                        
+                        self.results_text.insert("end", device_info)
+                
+                self.progress_bar.stop()
+                self.progress_bar.set(0)
+                self.status_label.configure(text="Tarama tamamlandı")
+                self.scan_button.configure(state="normal")
+            
+            # UI güncellemelerini ana thread'de yap
+            self.window.after(0, update_ui)
             
         except Exception as e:
-            self.results_text.insert("end", f"Hata oluştu: {str(e)}\n")
-        finally:
-            # Progress bar'ı durdur
-            self.progress_bar.stop()
-            self.progress_bar.set(0)
+            def show_error():
+                self.results_text.insert("end", f"Hata oluştu: {str(e)}\n")
+                self.progress_bar.stop()
+                self.progress_bar.set(0)
+                self.status_label.configure(text="Tarama tamamlandı")
+                self.scan_button.configure(state="normal")
             
-        self.status_label.configure(text="Tarama tamamlandı")
-        self.scan_button.configure(state="normal")
+            # Hata mesajını ana thread'de göster
+            self.window.after(0, show_error)
     
     def start_scan(self):
-        asyncio.run(self.scan_devices())
-    
+        # Asenkron taramayı ayrı bir thread'de başlat
+        threading.Thread(target=lambda: asyncio.run(self.scan_devices())).start()
+
     def run(self):
         self.window.mainloop()
 
