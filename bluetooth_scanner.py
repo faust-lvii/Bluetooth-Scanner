@@ -3,6 +3,8 @@ import asyncio
 from bleak import BleakScanner
 from datetime import datetime
 import threading
+import csv
+import os
 
 class BluetoothScannerApp:
     def __init__(self):
@@ -36,15 +38,32 @@ class BluetoothScannerApp:
         )
         self.title_label.pack(pady=20)
         
+        # Buton frame
+        self.button_frame = ctk.CTkFrame(self.main_frame)
+        self.button_frame.pack(pady=10, fill="x", padx=20)
+        
         # Tarama butonu
         self.scan_button = ctk.CTkButton(
-            self.main_frame,
+            self.button_frame,
             text="Taramayı Başlat",
             command=self.start_scan,
             font=("Helvetica", 14),
-            height=40
+            height=40,
+            width=200
         )
-        self.scan_button.pack(pady=10)
+        self.scan_button.pack(side="left", padx=5)
+        
+        # Kaydetme butonu
+        self.save_button = ctk.CTkButton(
+            self.button_frame,
+            text="Sonuçları Kaydet",
+            command=self.save_results,
+            font=("Helvetica", 14),
+            height=40,
+            width=200,
+            state="disabled"
+        )
+        self.save_button.pack(side="left", padx=5)
         
         # Durum etiketi
         self.status_label = ctk.CTkLabel(
@@ -64,16 +83,55 @@ class BluetoothScannerApp:
         self.results_text.pack(pady=10, padx=10)
         
         self.scanning = False
+        self.scan_results = []  # Tarama sonuçlarını saklamak için liste
+        
+    def save_results(self):
+        if not self.scan_results:
+            return
+            
+        # Timestamp oluştur
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Klasör oluştur
+        save_dir = "bluetooth_scans"
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # CSV dosyasına kaydet
+        csv_file = os.path.join(save_dir, f"bluetooth_scan_{timestamp}.csv")
+        with open(csv_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['İsim', 'Adres', 'RSSI', 'Yerel İsim', 'Üretici Verileri', 
+                           'Servis Verileri', 'Servis UUIDleri', 'TX Gücü'])
+            for device in self.scan_results:
+                writer.writerow([
+                    device['name'],
+                    device['address'],
+                    device['rssi'],
+                    device['local_name'],
+                    device['manufacturer_data'],
+                    device['service_data'],
+                    device['service_uuids'],
+                    device['tx_power']
+                ])
+        
+        # TXT dosyasına kaydet
+        txt_file = os.path.join(save_dir, f"bluetooth_scan_{timestamp}.txt")
+        with open(txt_file, 'w', encoding='utf-8') as f:
+            f.write(self.results_text.get("1.0", "end"))
+        
+        self.status_label.configure(text=f"Sonuçlar kaydedildi: {save_dir}")
     
     async def scan_devices(self):
         # Ana thread'de UI güncellemelerini yap
         self.window.after(0, lambda: self.results_text.delete("1.0", "end"))
         self.window.after(0, lambda: self.status_label.configure(text="Taranıyor..."))
         self.window.after(0, lambda: self.scan_button.configure(state="disabled"))
+        self.window.after(0, lambda: self.save_button.configure(state="disabled"))
         self.window.after(0, lambda: self.progress_bar.start())
         
         try:
             devices = await BleakScanner.discover(timeout=5)
+            self.scan_results = []  # Sonuçları temizle
             
             def update_ui():
                 if not devices:
@@ -84,12 +142,25 @@ class BluetoothScannerApp:
                         adv_data = device.advertisement_data if hasattr(device, 'advertisement_data') else None
                         rssi = adv_data.rssi if adv_data else "Bilinmiyor"
                         
+                        # Cihaz bilgilerini sözlük olarak sakla
+                        device_info_dict = {
+                            'name': device.name or 'Bilinmiyor',
+                            'address': device.address,
+                            'rssi': rssi,
+                            'local_name': adv_data.local_name if adv_data else 'Bilinmiyor',
+                            'manufacturer_data': str(adv_data.manufacturer_data) if adv_data and adv_data.manufacturer_data else 'Yok',
+                            'service_data': str(adv_data.service_data) if adv_data and adv_data.service_data else 'Yok',
+                            'service_uuids': str(adv_data.service_uuids) if adv_data and adv_data.service_uuids else 'Yok',
+                            'tx_power': adv_data.tx_power if adv_data and adv_data.tx_power else 'Bilinmiyor'
+                        }
+                        self.scan_results.append(device_info_dict)
+                        
                         device_info = f"""
 {'='*50}
 Cihaz {i}:
-İsim: {device.name or 'Bilinmiyor'}
-Adres: {device.address}
-RSSI: {rssi} dBm
+İsim: {device_info_dict['name']}
+Adres: {device_info_dict['address']}
+RSSI: {device_info_dict['rssi']} dBm
 """
                         # Detaylı advertisement verilerini ekle
                         if adv_data:
@@ -111,6 +182,7 @@ RSSI: {rssi} dBm
                 self.progress_bar.set(0)
                 self.status_label.configure(text="Tarama tamamlandı")
                 self.scan_button.configure(state="normal")
+                self.save_button.configure(state="normal")  # Kaydetme butonunu aktif et
             
             # UI güncellemelerini ana thread'de yap
             self.window.after(0, update_ui)
@@ -122,6 +194,7 @@ RSSI: {rssi} dBm
                 self.progress_bar.set(0)
                 self.status_label.configure(text="Tarama tamamlandı")
                 self.scan_button.configure(state="normal")
+                self.save_button.configure(state="disabled")
             
             # Hata mesajını ana thread'de göster
             self.window.after(0, show_error)
